@@ -1,0 +1,71 @@
+(defn high-op? [op]
+  (or (= op '*) (= op '/)))
+
+(defn op? [x]
+  (or (= x '+) (= x '-) (= x '*) (= x '/)))
+
+; * and /
+(defn step1 [expr]
+  (loop [res []
+         cur (first expr)
+         expr (rest expr)]
+    (if (empty? expr)
+      (conj res cur)
+      (let [op (first expr)
+            num (second expr)]
+        (if (high-op? op)
+          (recur res (list op cur num) (drop 2 expr))
+          (recur (conj res cur op) num (drop 2 expr)))))))
+
+; + and -
+(defn step2 [expr]
+  (loop [cur (first expr)
+         expr (rest expr)]
+    (if (empty? expr)
+      cur
+      (recur (list (first expr) cur (second expr)) (drop 2 expr)))))
+
+; used in 4a and 4b
+(defn to-prefix [expr]
+  (step2 (step1 expr)))
+
+; 4a
+
+(defn check-vars [expr bindings]
+  (loop [expr expr]
+    (when (not (empty? expr))
+      (let [x (first expr)]
+        (if (and (symbol? x) (not (op? x)) (not (contains? bindings x)))
+          (throw (Exception. (str "no value for variable " x)))
+          (recur (rest expr)))))))
+
+(defn eval-expression [expr bindings]
+  (check-vars expr bindings)
+  (let [vars (vec (apply concat bindings))]
+    (eval (list 'let vars (to-prefix expr)))))
+
+; 4b
+
+(defmacro infix [expr]
+  (to-prefix expr))
+
+
+(println (eval-expression '(1 + 4 * 3 - 5 / 2) {}))
+(println (eval-expression '(x + 4 * y - 5 / 2) '{x 10, y 4}))
+(println (eval-expression '(x - y - 2) '{x 10, y 3}))
+(println (eval-expression '(x / y * 2) '{x 8, y 4}))
+
+(try
+  (eval-expression '(x + z) '{x 1})
+  (catch Exception e
+    (println "error:" (.getMessage e))))
+
+(println)
+
+(println (infix (2 + 3 * 4)))
+(println (infix (10 - 3 - 2)))
+(println (let [x 8 y 4]
+           (infix (x / y * 2))))
+(println (let [x 10 y 4]
+           (infix (x + 4 * y - 5 / 2))))
+(println (macroexpand-1 '(infix (x + 4 * y - 5 / 2))))

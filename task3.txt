@@ -1,0 +1,70 @@
+(defn trap [f a b]
+  (* (- b a) (/ (+ (f a) (f b)) 2)))
+
+(defn node [x dx]
+  (int (Math/floor (/ x dx))))
+
+; naive
+
+(defn integral [f dx]
+  (fn [x]
+    (let [n (node x dx)]
+      (loop [i 0
+             s 0.0]
+        (if (= i n)
+          (+ s (trap f (* n dx) x))
+          (recur (inc i) (+ s (trap f (* i dx) (* (inc i) dx)))))))))
+
+; 3.1
+
+(def grid
+  (memoize
+    (fn [f dx i]
+      (if (= i 0)
+        0.0
+        (+ (grid f dx (dec i)) (trap f (* (dec i) dx) (* i dx)))))))
+
+(defn integral-memo [f dx]
+  (fn [x]
+    (let [n (node x dx)]
+      ; fill cache every 100 nodes, otherwise stack overflow on big x
+      (dotimes [k (quot n 100)]
+        (grid f dx (* k 100)))
+      (+ (grid f dx n) (trap f (* n dx) x)))))
+
+; 3.2
+
+(defn grid-seq [f dx]
+  (reductions + 0.0 (map (fn [i] (trap f (* i dx) (* (inc i) dx))) (range))))
+
+(defn integral-lazy [f dx]
+  (let [s (grid-seq f dx)]
+    (fn [x]
+      (let [n (node x dx)]
+        (+ (nth s n) (trap f (* n dx) x))))))
+
+
+(defn sq [x] (* x x))
+
+(def F1 (integral sq 0.01))
+(def F2 (integral-memo sq 0.01))
+(def F3 (integral-lazy sq 0.01))
+
+; x^3/3 = 0.0516180...
+(println (F1 0.537))
+(println (F2 0.537))
+(println (F3 0.537))
+
+(println (F1 2))
+(println (F2 2))
+(println (F3 2))
+
+(def xs (range 0 10 0.1))
+
+(time (doall (map F1 xs)))
+(time (doall (map F2 xs)))
+(time (doall (map F3 xs)))
+
+; dx / 2 -> error / 4
+(println (- ((integral-lazy sq 0.1) 0.537) (/ (* 0.537 0.537 0.537) 3)))
+(println (- ((integral-lazy sq 0.05) 0.537) (/ (* 0.537 0.537 0.537) 3)))

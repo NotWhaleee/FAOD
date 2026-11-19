@@ -1,0 +1,88 @@
+; 5.1
+
+(defn get-blocks [coll n]
+  (loop [coll coll
+         res []]
+    (if (empty? coll)
+      res
+      (recur (drop n coll) (conj res (take n coll))))))
+
+(defn parallel-filter [pred coll block-size]
+  (let [blocks (get-blocks coll block-size)
+        futs (doall (map (fn [b] (future (doall (filter pred b)))) blocks))]
+    (doall (apply concat (map deref futs)))))
+
+; 5.2
+
+(defn lazy-blocks [coll n]
+  (lazy-seq
+    (when (not (empty? coll))
+      (cons (take n coll) (lazy-blocks (drop n coll) n)))))
+
+; ahead is futs moved forward by k, so at most k + 1 futures are running
+(defn lazy-step [futs ahead]
+  (lazy-seq
+    (when (not (empty? futs))
+      (seq ahead)
+      (concat (deref (first futs))
+              (lazy-step (rest futs) (rest ahead))))))
+
+(defn lazy-parallel-filter [pred coll block-size]
+  (let [k 4
+        futs (map (fn [b] (future (doall (filter pred b))))
+                  (lazy-blocks coll block-size))]
+    (lazy-step futs (drop k futs))))
+
+
+; slow predicate for tests
+(defn prime? [n]
+  (if (< n 2)
+    false
+    (loop [d 2]
+      (cond
+        (> (* d d) n) true
+        (= 0 (mod n d)) false
+        :else (recur (inc d))))))
+
+(defn slow-prime? [n]
+  (prime? (+ 1000000000 n)))
+
+
+(println (seq (parallel-filter even? (range 10) 3)))
+(println (seq (parallel-filter even? [] 3)))
+(println (seq (parallel-filter odd? [1 2 3 4 5 6 7] 3)))
+(println (get-blocks (range 10) 3))
+(println)
+
+(println (take 10 (lazy-parallel-filter even? (range) 8)))
+(println (take 5 (lazy-parallel-filter slow-prime? (range) 100)))
+(println (seq (lazy-parallel-filter even? [] 3)))
+(println)
+
+; how many elements were checked for (take 10 ...) on infinite range
+(def checked (atom 0))
+
+(defn counting-even? [x]
+  (swap! checked inc)
+  (even? x))
+
+(doall (take 10 (lazy-parallel-filter counting-even? (range) 8)))
+(Thread/sleep 200)
+(println "checked:" @checked)
+(println)
+
+; time on the same data
+(def data (range 2000))
+
+(println "filter")
+(time (count (doall (filter slow-prime? data))))
+(println "parallel-filter")
+(time (count (parallel-filter slow-prime? data 200)))
+(println "lazy-parallel-filter")
+(time (count (doall (lazy-parallel-filter slow-prime? data 200))))
+
+(println (= (filter slow-prime? data)
+            (parallel-filter slow-prime? data 200)
+            (lazy-parallel-filter slow-prime? data 200)))
+
+(shutdown-agents)
